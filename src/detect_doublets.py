@@ -2,7 +2,7 @@
 
 By: Austin Hartman
 Created: 11/~/2020
-Last modified: 11/278/2020
+Last modified: 12/5/2020
 """
 
 import csv
@@ -12,6 +12,7 @@ import scipy  # io package requires it's own explicit import
 import scipy.io
 import numpy as np
 from sklearn import decomposition
+import argparse
 
 import nearest_neighbors
 
@@ -19,22 +20,27 @@ RANDOM_STATE = 24
 
 
 def main():
-    """Run the module
-    """
+    """Run the module"""
+
+    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument("--features", help="path to features.tsv.gz")
+    parser.add_argument("--matrix", help="path to matrix.mtx.gz")
+    parser.add_argument("--barcodes", help="path to barcodes.tsv.gz")
+    args = parser.parse_args()
 
     # load up files
-    mtx = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/matrix.mtx.gz"
-    features = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/features.tsv.gz"
-    barcodes = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/barcodes.tsv.gz"
-    matrix_dict = load_feature_barcode_matrix(mtx, barcodes, features)
+    # mtx = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/matrix.mtx.gz"
+    # features = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/features.tsv.gz"
+    # barcodes = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/barcodes.tsv.gz"
+    
+    matrix_dict = load_feature_barcode_matrix(args.matrix, args.barcodes, args.features)
 
     doublet_finder = DoubletFinder(matrix_dict["mtx"], matrix_dict["barcodes"])
     doublet_finder.find_doublets(save_barcodes=True)
 
 
 class DoubletFinder:
-    """Class which takes feature barcode matrix and calls doublet barcodes
-    """
+    """Class which takes feature barcode matrix and calls doublet barcodes"""
 
     def __init__(self, mtx, barcodes=None, feature_ids=None, feature_types=None, gene_names=None, artificial_fraction=0.03):
         # self.matrix_dict = _load_market_mtx(mtx, barcodes, features)
@@ -58,19 +64,28 @@ class DoubletFinder:
         self.nearest_neighbors_dict = dict()
         self.num_cells_for_artifial_doublets, self.num_artifial_doublets = self._calc_num_artifical()
 
-    def find_doublets(self, k=15, save_pca=False, save_mtx=False, save_barcodes=False):
-        """Function that wires it all together and calls doublets.
-        """
+    def find_doublets(
+        self,
+        k=15,
+        save_pca=False,
+        save_pca_path="pca_matrix.csv",
+        save_mtx=False,
+        save_mtx_path="matrix.mtx",
+        save_barcodes=False,
+        save_barcodes_path="doublet_barcodes.txt"
+    ):
+        """Function that wires it all together and calls doublets."""
+
         if save_mtx:
-            self._save_matrix("matrix.mtx")
+            self._save_matrix(save_mtx_path)
         self._create_artificial_doublets()
         self._reduce_matrix_dimensions()
         if save_pca:
-            self._save_pca_matrix("pca_matrix.csv")
+            self._save_pca_matrix(save_pca_path)
         self._find_nearest_neighbors(k)
         self._call_doublets()
         if save_barcodes:
-            self._save_barcodes("doublet_barcodes.txt")
+            self._save_barcodes(save_barcodes_path)
 
     def _calc_num_artifical(self):
         # set number of cells to use for artificial doublet generation
@@ -81,7 +96,6 @@ class DoubletFinder:
         # index 0 is the number of cells used to generate artificial doublets
         # index 1 is the number of artificial doublets to be created
         return (num_cells_for_artifial_doublets, int(num_cells_for_artifial_doublets / 2))
-
 
     def _create_artificial_doublets(self):
         """
@@ -175,19 +189,19 @@ class DoubletFinder:
                 f.write("{},\n".format(self.barcodes[i]))
 
     def _save_matrix(self, filename):
-        """Save matrix as market matrix format
-        """
+        """Save matrix as market matrix format"""
+
         scipy.io.mmwrite(filename, self.mtx, field="integer")  # pylint: disable=no-member
 
     def _save_pca_matrix(self, filename):
-        """Save reduced dimension PCA matrix as a CSV.
-        """
+        """Save reduced dimension PCA matrix as a CSV."""
+
         np.savetxt(filename, self.pca_matrix, delimiter=",")
 
 
 def load_feature_barcode_matrix(mtx, barcodes_path, features_path):
-    """Load 10x feature barcode matrix files.
-    """
+    """Load 10x feature barcode matrix files."""
+
     mat = scipy.io.mmread(mtx)  # pylint: disable=no-member
     mat = scipy.sparse.csc_matrix(mat)
 
