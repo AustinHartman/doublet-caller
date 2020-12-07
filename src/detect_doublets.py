@@ -22,21 +22,28 @@ RANDOM_STATE = 24
 def main():
     """Run the module"""
 
+    # parse arguments
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument("--features", help="path to features.tsv.gz")
-    parser.add_argument("--matrix", help="path to matrix.mtx.gz")
-    parser.add_argument("--barcodes", help="path to barcodes.tsv.gz")
+    parser.add_argument("--features", help="path to features.tsv.gz", required=True)
+    parser.add_argument("--matrix", help="path to matrix.mtx.gz", required=True)
+    parser.add_argument("--barcodes", help="path to barcodes.tsv.gz", required=True)
+    parser.add_argument("--doublet-file", help="file path to save putative doublets")
     args = parser.parse_args()
 
     # load up files
     # mtx = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/matrix.mtx.gz"
     # features = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/features.tsv.gz"
     # barcodes = "/Users/austinhartman/Desktop/bioinfo-analysis/detect_doublets/filtered_feature_bc_matrix/barcodes.tsv.gz"
-    
+
     matrix_dict = load_feature_barcode_matrix(args.matrix, args.barcodes, args.features)
 
     doublet_finder = DoubletFinder(matrix_dict["mtx"], matrix_dict["barcodes"])
-    doublet_finder.find_doublets(save_barcodes=True)
+    if args.doublet_file:
+        doublet_finder.find_doublets(save_barcodes=True, save_barcodes_path=args.doublet_file)
+    else:
+        doublet_finder.find_doublets()
+
+    print("All done!")
 
 
 class DoubletFinder:
@@ -65,14 +72,14 @@ class DoubletFinder:
         self.num_cells_for_artifial_doublets, self.num_artifial_doublets = self._calc_num_artifical()
 
     def find_doublets(
-        self,
-        k=15,
-        save_pca=False,
-        save_pca_path="pca_matrix.csv",
-        save_mtx=False,
-        save_mtx_path="matrix.mtx",
-        save_barcodes=False,
-        save_barcodes_path="doublet_barcodes.txt"
+            self,
+            k=15,
+            save_pca=False,
+            save_pca_path="pca_matrix.csv",
+            save_mtx=False,
+            save_mtx_path="matrix.mtx",
+            save_barcodes=False,
+            save_barcodes_path="doublet_barcodes.txt"
     ):
         """Function that wires it all together and calls doublets."""
 
@@ -181,9 +188,12 @@ class DoubletFinder:
         for _, v in self.nearest_neighbors_dict.items():
             for _, cell_idx in v:
                 self.num_times_knn[cell_idx][1] += 1
-        print(sorted(self.num_times_knn, key=lambda x: x[1])[-40:])
+        
+        # print(sorted(self.num_times_knn, key=lambda x: x[1])[-40:])
 
     def _save_barcodes(self, filename, num_to_save_as_doublets=100):
+        # TODO: come up with a better metric to score barcodes. Number of times a barcode
+        # appears in a simulated doublets nearest neighbors is likely not all that robust
         with open(filename, 'w') as f:
             for i, _ in sorted(self.num_times_knn, key=lambda x: x[1])[-num_to_save_as_doublets:]:
                 f.write("{},\n".format(self.barcodes[i]))
