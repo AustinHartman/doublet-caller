@@ -8,16 +8,18 @@ Last modified: 12/5/2020
 import csv
 import gzip
 import sys
+import argparse
+import collections
 import scipy  # io package requires it's own explicit import
 import scipy.io
 import numpy as np
 from sklearn import decomposition
-import argparse
 
 import nearest_neighbors
 
 RANDOM_STATE = 24
-
+ARTIFICIAL_FRACTION_DEFAULT = 0.03
+NUM_TO_SAVE_AS_DOUBLETS_DEFAULT = 100
 
 def main():
     """Run the module"""
@@ -27,7 +29,16 @@ def main():
     parser.add_argument("--features", help="path to features.tsv.gz", required=True)
     parser.add_argument("--matrix", help="path to matrix.mtx.gz", required=True)
     parser.add_argument("--barcodes", help="path to barcodes.tsv.gz", required=True)
-    parser.add_argument("--doublet-file", help="file path to save putative doublets")
+    parser.add_argument(
+        "--doublet-file",
+        help="file path to save putative doublets",
+        default=None
+    )
+    parser.add_argument(
+        "--artificial-fraction",
+        help="Number of artificial doublets to generate as a fraction of the number of cells",
+        default=ARTIFICIAL_FRACTION_DEFAULT
+    )
     args = parser.parse_args()
 
     # load up files
@@ -38,10 +49,8 @@ def main():
     matrix_dict = load_feature_barcode_matrix(args.matrix, args.barcodes, args.features)
 
     doublet_finder = DoubletFinder(matrix_dict["mtx"], matrix_dict["barcodes"])
-    if args.doublet_file:
-        doublet_finder.find_doublets(save_barcodes=True, save_barcodes_path=args.doublet_file)
-    else:
-        doublet_finder.find_doublets()
+    doublet_finder.find_doublets(save_barcodes_path=args.doublet_file)
+    doublet_finder.print_metrics()
 
     print("All done!")
 
@@ -49,7 +58,15 @@ def main():
 class DoubletFinder:
     """Class which takes feature barcode matrix and calls doublet barcodes"""
 
-    def __init__(self, mtx, barcodes=None, feature_ids=None, feature_types=None, gene_names=None, artificial_fraction=0.03):
+    def __init__(
+            self,
+            mtx,
+            barcodes=None,
+            feature_ids=None,
+            feature_types=None,
+            gene_names=None,
+            artificial_fraction=ARTIFICIAL_FRACTION_DEFAULT
+    ):
         # self.matrix_dict = _load_market_mtx(mtx, barcodes, features)
         # Required
         self.mtx = mtx
@@ -70,28 +87,26 @@ class DoubletFinder:
         self.pca_matrix = np.ndarray([])
         self.nearest_neighbors_dict = dict()
         self.num_cells_for_artifial_doublets, self.num_artifial_doublets = self._calc_num_artifical()
+        self.doublet_barcodes = list() # store the doublet barcodes which can be later saved as a TSV
 
     def find_doublets(
             self,
             k=15,
-            save_pca=False,
-            save_pca_path="pca_matrix.csv",
-            save_mtx=False,
-            save_mtx_path="matrix.mtx",
-            save_barcodes=False,
-            save_barcodes_path="doublet_barcodes.txt"
+            save_pca_path=None,
+            save_mtx_path=None,
+            save_barcodes_path=None
     ):
         """Function that wires it all together and calls doublets."""
 
-        if save_mtx:
+        if save_mtx_path:
             self._save_matrix(save_mtx_path)
         self._create_artificial_doublets()
         self._reduce_matrix_dimensions()
-        if save_pca:
+        if save_pca_path:
             self._save_pca_matrix(save_pca_path)
         self._find_nearest_neighbors(k)
         self._call_doublets()
-        if save_barcodes:
+        if save_barcodes_path:
             self._save_barcodes(save_barcodes_path)
 
     def _calc_num_artifical(self):
@@ -188,10 +203,23 @@ class DoubletFinder:
         for _, v in self.nearest_neighbors_dict.items():
             for _, cell_idx in v:
                 self.num_times_knn[cell_idx][1] += 1
-        
+
+        self.doublet_barcodes = sorted(self.num_times_knn, key=lambda x: x[1])[-NUM_TO_SAVE_AS_DOUBLETS_DEFAULT:]
         # print(sorted(self.num_times_knn, key=lambda x: x[1])[-40:])
 
-    def _save_barcodes(self, filename, num_to_save_as_doublets=100):
+    def print_metrics(self):
+        """Print relevant data for debugging."""
+        # num times regular barcodes appear in a simulated doublet nearest neighbors, grouped by value
+        counter = collections.Counter(
+            list(self.num_times_knn.values())
+        )
+        print("##\nNumber time barcoded in sim doub KNN: {}".format(counter))
+
+        # artificial fraction
+        print("##\nArtificial fraction: {}".format(self.artificial_fraction))
+
+
+    def _save_barcodes(self, filename, num_to_save_as_doublets=NUM_TO_SAVE_AS_DOUBLETS_DEFAULT):
         # TODO: come up with a better metric to score barcodes. Number of times a barcode
         # appears in a simulated doublets nearest neighbors is likely not all that robust
         with open(filename, 'w') as f:
