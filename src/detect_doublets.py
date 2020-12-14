@@ -210,8 +210,10 @@ class DoubletFinder:
     def print_metrics(self):
         """Print relevant data for debugging."""
         # num times regular barcodes appear in a simulated doublet nearest neighbors, grouped by value
+        # TODO: this list is 2 dimensional... need to extract dimensione with counts for the counter
+        frequencies = [i[1] for i in self.num_times_knn]
         counter = collections.Counter(
-            list(self.num_times_knn.values())
+            frequencies
         )
         print("##\nNumber time barcoded in sim doub KNN: {}".format(counter))
 
