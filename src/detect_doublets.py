@@ -5,6 +5,7 @@ Created: 11/~/2020
 Last modified: 12/5/2020
 """
 
+import os
 import csv
 import gzip
 import sys
@@ -14,12 +15,13 @@ import scipy  # io package requires it's own explicit import
 import scipy.io
 import numpy as np
 from sklearn import decomposition
+from sklearn.linear_model import LinearRegression
 
 import nearest_neighbors
 
 RANDOM_STATE = 24
 ARTIFICIAL_FRACTION_DEFAULT = 0.03
-NUM_TO_SAVE_AS_DOUBLETS_DEFAULT = 100
+# NUM_TO_SAVE_AS_DOUBLETS_DEFAULT = 100
 
 def main():
     """Run the module"""
@@ -61,6 +63,7 @@ class DoubletFinder:
     def __init__(
             self,
             mtx,
+            num_to_save_as_doublets,
             barcodes=None,
             feature_ids=None,
             feature_types=None,
@@ -88,6 +91,19 @@ class DoubletFinder:
         self.nearest_neighbors_dict = dict()
         self.num_cells_for_artifial_doublets, self.num_artifial_doublets = self._calc_num_artifical()
         self.doublet_barcodes = list() # store the doublet barcodes which can be later saved as a TSV
+        if num_to_save_as_doublets:
+            self.num_to_save_as_doublets = num_to_save_as_doublets
+        else:
+            # calculate the number of barcodes to save as doublets
+            self.num_to_save_as_doublets = int(self.calc_pct_to_save_as_doublets() * self.num_cells)
+
+    def calc_pct_to_save_as_doublets(self):
+        """predict doublet rate based on cell load"""
+        x, y = load_expected_doublet_rates(  # pylint: disable=invalid-name
+            "/Users/austinhartman/Desktop/doublet-caller/src/expected_doublet_rates.csv"
+            )
+        r = calculate_expected_doublet_rate(x, y)  # pylint: disable=invalid-name
+        return self.num_cells * r["coefficient"] + r["intercept"]
 
     def find_doublets(
             self,
@@ -204,7 +220,7 @@ class DoubletFinder:
             for _, cell_idx in v:
                 self.num_times_knn[cell_idx][1] += 1
 
-        self.doublet_barcodes = sorted(self.num_times_knn, key=lambda x: x[1])[-NUM_TO_SAVE_AS_DOUBLETS_DEFAULT:]
+        self.doublet_barcodes = sorted(self.num_times_knn, key=lambda x: x[1])[-(self.num_to_save_as_doublets):]
         # print(sorted(self.num_times_knn, key=lambda x: x[1])[-40:])
 
     def print_metrics(self):
@@ -221,11 +237,11 @@ class DoubletFinder:
         print("##\nArtificial fraction: {}".format(self.artificial_fraction))
 
 
-    def _save_barcodes(self, filename, num_to_save_as_doublets=NUM_TO_SAVE_AS_DOUBLETS_DEFAULT):
+    def _save_barcodes(self, filename):
         # TODO: come up with a better metric to score barcodes. Number of times a barcode
         # appears in a simulated doublets nearest neighbors is likely not all that robust
         with open(filename, 'w') as f:
-            for i, _ in sorted(self.num_times_knn, key=lambda x: x[1])[-num_to_save_as_doublets:]:
+            for i, _ in sorted(self.num_times_knn, key=lambda x: x[1])[-self.num_to_save_as_doublets:]:
                 f.write("{},\n".format(self.barcodes[i]))
 
     def _save_matrix(self, filename):
@@ -263,6 +279,34 @@ def load_feature_barcode_matrix(mtx, barcodes_path, features_path):
         "gene_names": gene_names,
         "mtx": mat,
         "barcodes": barcodes,
+    }
+
+
+def load_expected_doublet_rates(filename):
+    """load expected doublet rates CSV, to calculate regression."""
+    if os.path.exists(filename):
+        expected_doublet_rates = np.loadtxt(filename, delimiter=',', skiprows=1)
+        x = expected_doublet_rates[:, 0].reshape((-1, 1))  # pylint: disable=invalid-name
+        y = expected_doublet_rates[:, 1]  # pylint: disable=invalid-name
+    else:
+        raise FileNotFoundError
+
+    return (x, y)
+
+
+def calculate_expected_doublet_rate(x, y):  # pylint: disable=invalid-name
+    """run linear regression to estimate doublet count based on # of cells.
+    x - np.array of cell counts
+    y - np.array of cell doublet fractions
+    """
+
+    model = LinearRegression(fit_intercept=True, normalize=False)
+    model.fit(x, y)
+
+    return {
+        "r_sq": model.score(x, y),
+        "intercept": model.intercept_,
+        "coefficient": model.coef_
     }
 
 
