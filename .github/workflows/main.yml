@@ -1,0 +1,17 @@
+name: black-check
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  python:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Install black
+        run: pip3 install --user black==19.10b0
+      - name: Checkout git repository
+        uses: actions/checkout@master
+      - name: Run black
+        run: ~/.local/bin/black --check --diff src
