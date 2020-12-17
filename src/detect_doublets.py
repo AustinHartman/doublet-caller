@@ -23,23 +23,20 @@ RANDOM_STATE = 24
 ARTIFICIAL_FRACTION_DEFAULT = 0.03
 # NUM_TO_SAVE_AS_DOUBLETS_DEFAULT = 100
 
+
 def main():
     """Run the module"""
 
     # parse arguments
-    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser = argparse.ArgumentParser(description="Process some integers.")
     parser.add_argument("--features", help="path to features.tsv.gz", required=True)
     parser.add_argument("--matrix", help="path to matrix.mtx.gz", required=True)
     parser.add_argument("--barcodes", help="path to barcodes.tsv.gz", required=True)
-    parser.add_argument(
-        "--doublet-file",
-        help="file path to save putative doublets",
-        default=None
-    )
+    parser.add_argument("--doublet-file", help="file path to save putative doublets", default=None)
     parser.add_argument(
         "--artificial-fraction",
         help="Number of artificial doublets to generate as a fraction of the number of cells",
-        default=ARTIFICIAL_FRACTION_DEFAULT
+        default=ARTIFICIAL_FRACTION_DEFAULT,
     )
     args = parser.parse_args()
 
@@ -61,14 +58,14 @@ class DoubletFinder:
     """Class which takes feature barcode matrix and calls doublet barcodes"""
 
     def __init__(
-            self,
-            mtx,
-            num_to_save_as_doublets,
-            barcodes=None,
-            feature_ids=None,
-            feature_types=None,
-            gene_names=None,
-            artificial_fraction=ARTIFICIAL_FRACTION_DEFAULT
+        self,
+        mtx,
+        num_to_save_as_doublets,
+        barcodes=None,
+        feature_ids=None,
+        feature_types=None,
+        gene_names=None,
+        artificial_fraction=ARTIFICIAL_FRACTION_DEFAULT,
     ):
         # self.matrix_dict = _load_market_mtx(mtx, barcodes, features)
         # Required
@@ -89,8 +86,13 @@ class DoubletFinder:
         self.num_genes = self.mtx.get_shape()[0]
         self.pca_matrix = np.ndarray([])
         self.nearest_neighbors_dict = dict()
-        self.num_cells_for_artifial_doublets, self.num_artifial_doublets = self._calc_num_artifical()
-        self.doublet_barcodes = list() # store the doublet barcodes which can be later saved as a TSV
+        (
+            self.num_cells_for_artifial_doublets,
+            self.num_artifial_doublets,
+        ) = self._calc_num_artifical()
+        self.doublet_barcodes = (
+            list()
+        )  # store the doublet barcodes which can be later saved as a TSV
         if num_to_save_as_doublets:
             self.num_to_save_as_doublets = num_to_save_as_doublets
         else:
@@ -101,17 +103,11 @@ class DoubletFinder:
         """predict doublet rate based on cell load"""
         x, y = load_expected_doublet_rates(  # pylint: disable=invalid-name
             "/Users/austinhartman/Desktop/doublet-caller/src/expected_doublet_rates.csv"
-            )
+        )
         r = calculate_expected_doublet_rate(x, y)  # pylint: disable=invalid-name
         return self.num_cells * r["coefficient"] + r["intercept"]
 
-    def find_doublets(
-            self,
-            k=15,
-            save_pca_path=None,
-            save_mtx_path=None,
-            save_barcodes_path=None
-    ):
+    def find_doublets(self, k=15, save_pca_path=None, save_mtx_path=None, save_barcodes_path=None):
         """Function that wires it all together and calls doublets."""
 
         if save_mtx_path:
@@ -182,7 +178,9 @@ class DoubletFinder:
         # TODO: consider the TruncatedSVD or other sklearn PCA algorithm varients here
 
         pca = decomposition.PCA(n_components=principal_components, random_state=RANDOM_STATE)
-        pca.fit(np.rot90(self.mtx.toarray())) # rotate by 90 degrees to accomadate for axis which reduction is performed on
+        pca.fit(
+            np.rot90(self.mtx.toarray())
+        )  # rotate by 90 degrees to accomadate for axis which reduction is performed on
         self.pca_matrix = pca.transform(np.rot90(self.mtx.toarray()))
 
     def _find_nearest_neighbors(self, k=15):
@@ -200,10 +198,14 @@ class DoubletFinder:
         nn_obj = nearest_neighbors.NearestNeighbors(self.pca_matrix, k)
 
         # create set of indices for nearest neighbors to ignore; set contains indices for artificial doublets
-        idxs_to_ignore = {i for i in range(self.num_cells, self.num_cells + self.num_artifial_doublets)}
-        for i in range(self.num_cells, self.num_cells+self.num_artifial_doublets):
+        idxs_to_ignore = {
+            i for i in range(self.num_cells, self.num_cells + self.num_artifial_doublets)
+        }
+        for i in range(self.num_cells, self.num_cells + self.num_artifial_doublets):
             neighbors = nn_obj.get_nearest_neighbors(i, idxs_to_ignore)
-            neighbors = [i for i in neighbors if i[1] < self.num_cells]  # only include similarity if that similarity is for a cell barcode
+            neighbors = [
+                i for i in neighbors if i[1] < self.num_cells
+            ]  # only include similarity if that similarity is for a cell barcode
             self.nearest_neighbors_dict[i] = neighbors
 
     def _call_doublets(self):
@@ -220,7 +222,9 @@ class DoubletFinder:
             for _, cell_idx in v:
                 self.num_times_knn[cell_idx][1] += 1
 
-        self.doublet_barcodes = sorted(self.num_times_knn, key=lambda x: x[1])[-(self.num_to_save_as_doublets):]
+        self.doublet_barcodes = sorted(self.num_times_knn, key=lambda x: x[1])[
+            -(self.num_to_save_as_doublets) :
+        ]
         # print(sorted(self.num_times_knn, key=lambda x: x[1])[-40:])
 
     def print_metrics(self):
@@ -228,20 +232,19 @@ class DoubletFinder:
         # num times regular barcodes appear in a simulated doublet nearest neighbors, grouped by value
         # TODO: this list is 2 dimensional... need to extract dimensione with counts for the counter
         frequencies = [i[1] for i in self.num_times_knn]
-        counter = collections.Counter(
-            frequencies
-        )
+        counter = collections.Counter(frequencies)
         print("##\nNumber time barcoded in sim doub KNN: {}".format(counter))
 
         # artificial fraction
         print("##\nArtificial fraction: {}".format(self.artificial_fraction))
 
-
     def _save_barcodes(self, filename):
         # TODO: come up with a better metric to score barcodes. Number of times a barcode
         # appears in a simulated doublets nearest neighbors is likely not all that robust
-        with open(filename, 'w') as f:
-            for i, _ in sorted(self.num_times_knn, key=lambda x: x[1])[-self.num_to_save_as_doublets:]:
+        with open(filename, "w") as f:
+            for i, _ in sorted(self.num_times_knn, key=lambda x: x[1])[
+                -self.num_to_save_as_doublets :
+            ]:
                 f.write("{},\n".format(self.barcodes[i]))
 
     def _save_matrix(self, filename):
@@ -285,7 +288,7 @@ def load_feature_barcode_matrix(mtx, barcodes_path, features_path):
 def load_expected_doublet_rates(filename):
     """load expected doublet rates CSV, to calculate regression."""
     if os.path.exists(filename):
-        expected_doublet_rates = np.loadtxt(filename, delimiter=',', skiprows=1)
+        expected_doublet_rates = np.loadtxt(filename, delimiter=",", skiprows=1)
         x = expected_doublet_rates[:, 0].reshape((-1, 1))  # pylint: disable=invalid-name
         y = expected_doublet_rates[:, 1]  # pylint: disable=invalid-name
     else:
@@ -303,11 +306,7 @@ def calculate_expected_doublet_rate(x, y):  # pylint: disable=invalid-name
     model = LinearRegression(fit_intercept=True, normalize=False)
     model.fit(x, y)
 
-    return {
-        "r_sq": model.score(x, y),
-        "intercept": model.intercept_,
-        "coefficient": model.coef_
-    }
+    return {"r_sq": model.score(x, y), "intercept": model.intercept_, "coefficient": model.coef_}
 
 
 if __name__ == "__main__":

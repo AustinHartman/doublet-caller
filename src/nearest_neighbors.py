@@ -53,7 +53,7 @@ class NearestNeighbors:
                 sim_list.append((euclidean(self.mtx[i], self.mtx[idx]), i))
 
         # return the k most similar cell profiles
-        return sorted(sim_list)[1:self.k+1]
+        return sorted(sim_list)[1 : self.k + 1]
 
 
 def euclidean(ls_1, ls_2):
