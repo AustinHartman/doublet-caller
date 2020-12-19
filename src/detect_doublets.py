@@ -21,7 +21,6 @@ import nearest_neighbors
 
 RANDOM_STATE = 24
 ARTIFICIAL_FRACTION_DEFAULT = 0.03
-# NUM_TO_SAVE_AS_DOUBLETS_DEFAULT = 100
 
 
 def main():
@@ -29,14 +28,26 @@ def main():
 
     # parse arguments
     parser = argparse.ArgumentParser(description="Process some integers.")
-    parser.add_argument("--features", help="path to features.tsv.gz", required=True)
     parser.add_argument("--matrix", help="path to matrix.mtx.gz", required=True)
     parser.add_argument("--barcodes", help="path to barcodes.tsv.gz", required=True)
-    parser.add_argument("--doublet-file", help="file path to save putative doublets", default=None)
+    parser.add_argument(
+        "--doublet-file", help="file path to save putative doublets", default=None, required=False
+    )
+    parser.add_argument(
+        "--features",
+        help="path to features.tsv.gz",
+        default=None, 
+        required=False
+    )
     parser.add_argument(
         "--artificial-fraction",
         help="Number of artificial doublets to generate as a fraction of the number of cells",
         default=ARTIFICIAL_FRACTION_DEFAULT,
+    )
+    parser.add_argument(
+        "--num-doublets",
+        help="Number of cell barcodes to be saved as doublets. Default is to infer based on regression of doublet rate vs cell load.",
+        default=None,
     )
     args = parser.parse_args()
 
@@ -47,7 +58,12 @@ def main():
 
     matrix_dict = load_feature_barcode_matrix(args.matrix, args.barcodes, args.features)
 
-    doublet_finder = DoubletFinder(matrix_dict["mtx"], matrix_dict["barcodes"])
+    doublet_finder = DoubletFinder(
+        matrix_dict["mtx"],
+        matrix_dict["barcodes"],
+        artificial_fraction=args.artificial_fraction,
+        num_doublets=args.num_doublets,
+    )
     doublet_finder.find_doublets(save_barcodes_path=args.doublet_file)
     doublet_finder.print_metrics()
 
@@ -60,18 +76,14 @@ class DoubletFinder:
     def __init__(
         self,
         mtx,
-        num_to_save_as_doublets,
         barcodes=None,
         feature_ids=None,
         feature_types=None,
         gene_names=None,
         artificial_fraction=ARTIFICIAL_FRACTION_DEFAULT,
+        num_doublets=None,
     ):
-        # self.matrix_dict = _load_market_mtx(mtx, barcodes, features)
-        # Required
         self.mtx = mtx
-
-        # Optional
         self.barcodes = barcodes
         self.feature_ids = feature_ids
         self.feature_types = feature_types
@@ -93,11 +105,11 @@ class DoubletFinder:
         self.doublet_barcodes = (
             list()
         )  # store the doublet barcodes which can be later saved as a TSV
-        if num_to_save_as_doublets:
-            self.num_to_save_as_doublets = num_to_save_as_doublets
+        if num_doublets:
+            self.num_doublets = num_doublets
         else:
             # calculate the number of barcodes to save as doublets
-            self.num_to_save_as_doublets = int(self.calc_pct_to_save_as_doublets() * self.num_cells)
+            self.num_doublets = int(self.calc_pct_to_save_as_doublets() * self.num_cells)
 
     def calc_pct_to_save_as_doublets(self):
         """predict doublet rate based on cell load"""
@@ -223,7 +235,7 @@ class DoubletFinder:
                 self.num_times_knn[cell_idx][1] += 1
 
         self.doublet_barcodes = sorted(self.num_times_knn, key=lambda x: x[1])[
-            -(self.num_to_save_as_doublets) :
+            -(self.num_doublets) :  # pylint: disable=invalid-unary-operand-type
         ]
         # print(sorted(self.num_times_knn, key=lambda x: x[1])[-40:])
 
@@ -243,7 +255,7 @@ class DoubletFinder:
         # appears in a simulated doublets nearest neighbors is likely not all that robust
         with open(filename, "w") as f:
             for i, _ in sorted(self.num_times_knn, key=lambda x: x[1])[
-                -self.num_to_save_as_doublets :
+                -self.num_doublets : # pylint: disable=invalid-unary-operand-type
             ]:
                 f.write("{},\n".format(self.barcodes[i]))
 
@@ -265,12 +277,17 @@ def load_feature_barcode_matrix(mtx, barcodes_path, features_path):
     mat = scipy.sparse.csc_matrix(mat)
 
     try:
-        with gzip.open(features_path, "rt") as f:
-            feature_ids = [row[0] for row in csv.reader(f, delimiter="\t")]
-        with gzip.open(features_path, "rt") as f:
-            feature_types = [row[0] for row in csv.reader(f, delimiter="\t")]
-        with gzip.open(features_path, "rt") as f:
-            gene_names = [row[1] for row in csv.reader(f, delimiter="\t")]
+        if features_path:
+            with gzip.open(features_path, "rt") as f:
+                feature_ids = [row[0] for row in csv.reader(f, delimiter="\t")]
+            with gzip.open(features_path, "rt") as f:
+                feature_types = [row[0] for row in csv.reader(f, delimiter="\t")]
+            with gzip.open(features_path, "rt") as f:
+                gene_names = [row[1] for row in csv.reader(f, delimiter="\t")]
+        else:
+            feature_ids = None
+            feature_types = None
+            gene_names = None
         with gzip.open(barcodes_path, "rt") as f:
             barcodes = [row[0] for row in csv.reader(f, delimiter="\t")]
     except OSError:
