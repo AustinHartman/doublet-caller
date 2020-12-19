@@ -250,6 +250,9 @@ class DoubletFinder:
         # artificial fraction
         print("##\nArtificial fraction: {}".format(self.artificial_fraction))
 
+        # num doublets
+        print("##\nNumber of doublets called: {}".format(self.num_doublets))
+
     def _save_barcodes(self, filename):
         # TODO: come up with a better metric to score barcodes. Number of times a barcode
         # appears in a simulated doublets nearest neighbors is likely not all that robust
