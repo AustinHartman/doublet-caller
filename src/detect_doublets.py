@@ -33,12 +33,7 @@ def main():
     parser.add_argument(
         "--doublet-file", help="file path to save putative doublets", default=None, required=False
     )
-    parser.add_argument(
-        "--features",
-        help="path to features.tsv.gz",
-        default=None, 
-        required=False
-    )
+    parser.add_argument("--features", help="path to features.tsv.gz", default=None, required=False)
     parser.add_argument(
         "--artificial-fraction",
         help="Number of artificial doublets to generate as a fraction of the number of cells",
@@ -258,7 +253,7 @@ class DoubletFinder:
         # appears in a simulated doublets nearest neighbors is likely not all that robust
         with open(filename, "w") as f:
             for i, _ in sorted(self.num_times_knn, key=lambda x: x[1])[
-                -self.num_doublets : # pylint: disable=invalid-unary-operand-type
+                -self.num_doublets :  # pylint: disable=invalid-unary-operand-type
             ]:
                 f.write("{},\n".format(self.barcodes[i]))
 
